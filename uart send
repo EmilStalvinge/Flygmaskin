@@ -1,14 +1,16 @@
+
+#define F_CPU 8000000UL
 #include <stdint.h>
 #include <avr/io.h>
 #include <util/delay.h>
-#include "i2cmaster .h"
+#include "i2cmaster.h"
 
 // +-----------------------------------------------------------------------+ //
 // | ATmega328p Baudrate values for UBRRn for external crystal 11.0592MHz  | //
 // +-----------------------------------------------------------------------+ //
 
 #define BAUD_RATE_4800_BPS  143 // 4800bps
-#define BAUD_RATE_9600_BPS  6  // 9600bps
+#define BAUD_RATE_9600_BPS  51  // 9600bps
 
 #define BAUD_RATE_14400_BPS  47 // 14.4k bps
 #define BAUD_RATE_19200_BPS  35 // 19.2k bps
@@ -29,7 +31,7 @@ int main()
 	int i = 0;
 	unsigned int ubrr = BAUD_RATE_9600_BPS;
 	
-	unsigned char data[] = "fest i kväll grabbar  ";
+	unsigned char data[] = "fest_i_kväll_grabbar";
 	
 	/* Set Baudrate  */
 	UBRR0H = (ubrr>>8); // Shift the 16bit value ubrr 8 times to the right and transfer the upper 8 bits to UBBR0H register.
