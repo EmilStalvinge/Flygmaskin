@@ -1,1 +1,108 @@
-hej
+#define F_CPU 8000000UL
+#include <stdint.h>
+#include <avr/io.h>
+#include <util/delay.h>
+#include "lcd.h"
+#include <avr/interrupt.h>
+//#include "i2cmaster.h"
+
+// +-----------------------------------------------------------------------+ //
+// | ATmega328p Baudrate values for UBRRn for external crystal 11.0592MHz  | //
+// +-----------------------------------------------------------------------+ //
+
+
+#define BAUD_RATE_9600_BPS  51  // 9600bps
+#define BAUD_RATE_100000_BPS  4  // 100kbps
+#define RX_BUFFER_SIZE    200
+
+// +-----------------------------------------------------------------------+ //
+char serialBuffer[RX_BUFFER_SIZE];
+uint8_t rxReadPos = 0;
+uint8_t rxWritePos = 0;
+char rxBUFFER[RX_BUFFER_SIZE];
+
+char getChar(void);
+//char peekChar(void);
+
+int main()
+{
+	sei();
+	
+	unsigned int ubrr = BAUD_RATE_100000_BPS;
+	//unsigned char data[] = "fest_i_kväll_grabbar";
+	
+	
+	lcd_init(LCD_DISP_ON);
+	lcd_clrscr();
+	
+
+	
+	/* Set Baudrate  */
+	UBRR0H = (ubrr>>8); // Shift the 16bit value ubrr 8 times to the right and transfer the upper 8 bits to UBBR0H register.
+	UBRR0L = (ubrr);    // Copy the 16 bit value ubrr to the 8 bit UBBR0L register,Upper 8 bits are truncated while lower 8 bits are copied
+	
+	
+// init reciever
+	UCSR0C = 0b00101110;       /* Set frame format: 8data, 2stop bit, even parity */
+	UCSR0B = (1 << RXEN0) | (1 << RXCIE0) ;   /* Enable  rx  , enable interrupts         */
+
+	
+	while(1) /* Loop the messsage continously */
+	{
+		
+		
+		char c = getChar();
+		
+		lcd_putc(c);
+		_delay_ms(300);
+		
+		
+		
+		
+	}
+	
+	}//end of main
+	
+	//char peekChar(void)
+	
+	char getChar(void)
+	{
+		char ret = '\0';
+		
+		if(rxReadPos != rxWritePos)
+		{
+			ret = rxBUFFER[rxReadPos];
+			
+			rxReadPos++;
+			
+			if(rxReadPos >= RX_BUFFER_SIZE)
+			{
+				rxReadPos = 0;
+			}
+		}
+		return ret;
+	}
+	
+	ISR(USART_RX_vect)
+	{
+		rxBUFFER[rxWritePos] = UDR0;
+		
+		rxWritePos++;
+		
+		if (rxWritePos >= RX_BUFFER_SIZE)
+		{
+			rxWritePos = 0;
+		}
+		
+	}
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+
