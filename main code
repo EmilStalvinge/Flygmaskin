@@ -1,0 +1,136 @@
+#define F_CPU 8000000UL
+#include <stdint.h>
+#include <avr/io.h>
+#include <util/delay.h>
+#include <stdlib.h>
+#include <avr/interrupt.h>
+// #include "i2cmaster.h"
+// #include "lcd.h"*/
+
+
+
+#define BAUD_RATE_9600_BPS  51  // 9600bps
+#define BAUD_RATE_100000_BPS  4  // 100kbps
+#define RX_BUFFER_SIZE    25
+
+
+
+// +-----------------------------------------------------------------------+ //
+
+char serialBuffer[RX_BUFFER_SIZE];
+uint8_t rxReadPos = 0;
+uint8_t rxWritePos = 0;
+char _payload[RX_BUFFER_SIZE];
+uint16_t channels[5];
+uint8_t Buffer_loaded = 0;
+uint8_t failsafe = 0;
+double k = 62.5/1500; 
+double m = 125-(1700 * (62.5/1500));
+
+void initMotor(void)
+{
+	
+    DDRB |= (1 << PB1)|(1 << PB0);
+
+   OCR1A = 62.5;
+	// set PWM to 0% power
+
+	TCCR1A |= (1 << COM0A1);
+	// set none-inverting mode
+
+	TCCR1A |= (1 << WGM01) | (1 << WGM00);
+
+	// set fast PWM Mode
+
+	TCCR1B |= (1 << CS11);
+
+	// set prescaler to 1 and starts PWM
+	
+} 
+
+void initSBUS(void)
+{
+	sei();
+
+	unsigned int ubrr = BAUD_RATE_100000_BPS;
+
+
+	/* Set Baudrate  */
+
+	UBRR0H = (ubrr>>8); // Shift the 16bit value ubrr 8 times to the right and transfer the upper 8 bits to UBBR0H register.
+
+	UBRR0L = (ubrr);    // Copy the 16 bit value ubrr to the 8 bit UBBR0L register,Upper 8 bits are truncated while lower 8 bits are copied
+
+	
+
+
+	// init reciever
+
+	UCSR0C = 0b00101110;       /* Set frame format: 8data, 2stop bit, even parity */
+
+	UCSR0B = (1 << RXEN0) | (1 << RXCIE0) | (1<<TXEN0) ;   /* Enable  rx, tx  , enable interrupts         */
+
+}
+
+
+int main()
+{
+	initSBUS();  
+    initMotor();
+	
+	
+	
+	while(1)
+	{
+		
+		if (Buffer_loaded == 1)
+		{
+		channels[0]  = (uint16_t) ((_payload[1]    |_payload[2] <<8)                     & 0x07FF); // pitch  (högre värde uppåt)  max 1700
+		channels[1]  = (uint16_t) ((_payload[2]>>3 |_payload[3] <<5)                     & 0x07FF); //roll  (högre värde till höger) min 300
+		channels[2]  = (uint16_t) ((_payload[3]>>6 |_payload[4] <<2 |_payload[5]<<10)  	 & 0x07FF); // throttle (högre värde uppåt) min 200
+		channels[3]  = (uint16_t) ((_payload[5]>>1 |_payload[6] <<7)                     & 0x07FF);  // yaw (högre värde höger)
+		channels[4]  = (uint16_t) ((_payload[6]>>4 |_payload[7] <<4)                     & 0x07FF);  // switch  (högre uppåt)
+		 if ( (_payload[24] & 0x10) == 0x10)
+		 {
+		 failsafe = 1;	
+		 }
+		Buffer_loaded = 0;
+		}
+		
+	      OCR1A=channels[2] * k + m;    // ekvation för gas y = (62.5/1500) * X + (125-1700*(62.5/1500))
+	    
+
+		if (channels[2] * k + m > 100)
+		{
+		//	PORTB = 0b00000001;
+			
+		}
+		else
+		{
+		//	PORTB = 0x00;
+		}
+
+
+		
+	}
+}//end of main
+
+
+
+
+
+ISR(USART_RX_vect)
+{
+	_payload[rxWritePos] = UDR0;
+	
+	if (_payload[0] == 0x0F)              //leta efter header
+	{
+		rxWritePos++;
+
+		if (rxWritePos >= RX_BUFFER_SIZE)
+		{
+			rxWritePos = 0;
+			Buffer_loaded = 1;           // Flagga när buffern är lastad
+		}
+	}
+}
