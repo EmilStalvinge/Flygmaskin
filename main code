@@ -17,7 +17,7 @@
 
 // +-----------------------------------------------------------------------+ //
 
-char serialBuffer[RX_BUFFER_SIZE];
+// char serialBuffer[RX_BUFFER_SIZE];
 uint8_t rxReadPos = 0;
 uint8_t rxWritePos = 0;
 char _payload[RX_BUFFER_SIZE];
