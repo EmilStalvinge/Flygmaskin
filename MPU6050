@@ -17,8 +17,9 @@
 // in BCD each half of an 8-bit unsigned integer represents one digit from 0-9
 // similar to hexadecimal coding, but the higher bit combinations 1010 to 1111 
 // are not used
-#define fromBCD(x) (((x) >> 4) * 10 + ((x) & 0xF))
-#define toBCD(x)   ((((x) / 10) << 4) | ((x) % 10))
+
+// #define fromBCD(x) (((x) >> 4) * 10 + ((x) & 0xF))
+// #define toBCD(x)   ((((x) / 10) << 4) | ((x) % 10))
 
 
 
@@ -26,14 +27,11 @@
 #define MPU6050_ADDR  (0x68 << 1)   
 
 // definition of the DS1307 hardware registers - eight 8-bit registers
-enum {axh, axl, ayh, ayl, azh, azl, DSREGS};
+enum {axh, axl, ayh, ayl, azh, azl, th, tl, gxh, gxl, gyh, gyl, gzh, gzl, DSREGS};
 
 // memory copy of the DS1307 registers
 uint8_t DS1307_regs[DSREGS];
 
-//
-// Dallas DS1307 RTC Hardware routines
-//
 
 // read the eight registers from the DS1307 into the memory
 void DS1307read(void)
@@ -44,8 +42,8 @@ void DS1307read(void)
                              // set stop condition = release bus
     /* Commence the read. */
     i2c_start_wait(MPU6050_ADDR+I2C_WRITE);   // est device address and write mode
-    i2c_write(0x43);                         // wake up sensor
-                            // set stop condition = release bus
+    i2c_write(0x3B);                         // wake up sensor
+                            
     /* Commence the read. */
     _delay_us(20);
     i2c_start_wait(MPU6050_ADDR+I2C_READ);
@@ -61,63 +59,80 @@ void DS1307read(void)
 }
 
 // write the contents of the memory into the eight hardware registers of the DS1307
-void DS1307write(void)
+void DLPFwrite(void)
 {
-  uint8_t i;
   ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
   {
     i2c_start_wait(MPU6050_ADDR+I2C_WRITE);
-    i2c_write(0x00);  //start address
-    for (i=0; i<DSREGS; i++)
-    {
-      i2c_write(DS1307_regs[i]);
-    }
+    i2c_write(0x1A);  //start address
+    
+      i2c_write(0b00000100);
+    
     i2c_stop();
   }
 }
 
 void init()
 {
-  int8_t i;
   
+  //init LCD
   lcd_init(LCD_DISP_ON);
   lcd_clrscr();
   lcd_gotoxy(1,0);
-  lcd_puts_P("Accel X led");
+  lcd_puts_P("MPU6050 Test");
   _delay_ms(1000);
 lcd_clrscr();
   i2c_init();
   
-      i2c_start_wait(MPU6050_ADDR+I2C_WRITE);   // est device address and write mode
+  // init  MPU-6050
+      i2c_start_wait(MPU6050_ADDR+I2C_WRITE);   // set device address and write mode
     _delay_us(20);
-      i2c_write(0x6b);                         // wake up sensor
+      i2c_write(0x6b);                          // exit sleep mode
     _delay_us(20);
-      i2c_write(0x00);                         // wake up sensor
+      i2c_write(0x00);                         
       i2c_stop();
 	  
-  //DS1307read();
+  DLPFwrite();                                  // set low pass filter
   
 }
-
-//void initSensor()
 
 
 int main(void)
 {
-  uint8_t a_x_l, a_x_h;
+  float ax,ay,az,gx,gy,gz,temp;
   char buffer[20];
   init();
   
   while (1) 
   {
     DS1307read();
-    a_x_h  = fromBCD(DS1307_regs[axh]);
-    a_x_l  = fromBCD(DS1307_regs[axl]);
-   
-    sprintf(buffer, "%02d : %02d",a_x_l,a_x_h);
+
+      // accelerometer
+      ax  = ( (DS1307_regs[axh] << 8) | DS1307_regs[axl] ) / 8192;
+	  ay  = ( (DS1307_regs[ayh] << 8) | DS1307_regs[ayl] ) / 8192; 
+	  az  = ( (DS1307_regs[azh] << 8) | DS1307_regs[azl] ) / 8192;
+	  
+	  //gyro
+      gx  = ( (DS1307_regs[gxh] << 8) | DS1307_regs[gxl] ) / 131;
+	  gy  = ( (DS1307_regs[gyh] << 8) | DS1307_regs[gyl] ) / 131;
+	  gz  = ( (DS1307_regs[gzh] << 8) | DS1307_regs[gzl] ) / 131;
+	  
+     // temp= (((DS1307_regs[th]  << 8) + DS1307_regs[tl])/340)+36.53 ;
+	  
+    sprintf(buffer, "x %02f ",gx);	
     lcd_gotoxy(0,1);
+	lcd_puts(buffer);	
+    sprintf(buffer, "y %02e ",gy);
+    lcd_gotoxy(8,0);
     lcd_puts(buffer);
-    _delay_ms(100);
+	sprintf(buffer, "z %g ",gz);
+	lcd_gotoxy(0,0);
+	lcd_puts(buffer);
+	
+    
+    _delay_ms(300);
+	lcd_clrscr();
+	
+	
   }
 }
-
