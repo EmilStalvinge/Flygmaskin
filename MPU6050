@@ -99,7 +99,7 @@ lcd_clrscr();
 
 int main(void)
 {
-  float ax,ay,az,gx,gy,gz,temp;
+  uint16_t ax,ay,az,gx,gy,gz,temp;
   char buffer[20];
   init();
   
@@ -119,13 +119,13 @@ int main(void)
 	  
      // temp= (((DS1307_regs[th]  << 8) + DS1307_regs[tl])/340)+36.53 ;
 	  
-    sprintf(buffer, "x %02f ",gx);	
+    sprintf(buffer, "x %d ",gx);	
     lcd_gotoxy(0,1);
 	lcd_puts(buffer);	
-    sprintf(buffer, "y %02e ",gy);
+    sprintf(buffer, "y %d ",gy);
     lcd_gotoxy(8,0);
     lcd_puts(buffer);
-	sprintf(buffer, "z %g ",gz);
+	sprintf(buffer, "z %d ",gz);
 	lcd_gotoxy(0,0);
 	lcd_puts(buffer);
 	
