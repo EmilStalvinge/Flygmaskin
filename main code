@@ -147,6 +147,15 @@ int main()
 	initMotor();
 	initLCD();
 	
+	////////////////KP////////////////////
+	
+	//unit8_t roll_kp =  1;
+   	//uint8_t pitch_kp = 1;
+	//unit8_t roll_ki =  0;
+   	//uint8_t pitch_ki = 0;
+	//unit8_t roll_kd =  0;
+   	//uint8_t pitch_kd = 0;
+	
 	
 	while(1)
 	{
@@ -170,6 +179,52 @@ int main()
 			}
 			Buffer_loaded = 0;
 		}
+		
+		
+		
+		
+		
+		
+		
+		/*///////////////////////////P I D///////////////////////////////////*/
+    
+
+    //roll_desired_angelvelocity = 
+    //pitch_desired_angelvelocity =  
+         
+    
+    //roll_error = roll_angelvelocity - roll_desired_angelvelocity;
+    //pitch_error = pitch_angelvelocity - pitch_desired_angelvelocity;    
+    
+    //roll_pid_p = roll_kp*roll_error;
+    //pitch_pid_p = pitch_kp*pitch_error;
+    
+    //if(-3 < roll_error <3){roll_pid_i = roll_pid_i+(roll_ki*roll_error);}
+    //if(-3 < pitch_error <3){pitch_pid_i = pitch_pid_i+(pitch_ki*pitch_error);}
+    
+    //roll_pid_d = roll_kd*((roll_error - roll_previous_error)/elapsedTime);		//elapsed time
+    
+    //roll_PID = roll_pid_p + roll_pid_i + roll_pid_d;
+    //pitch_PID = pitch_pid_p + pitch_pid_i + pitch_pid_d;
+    
+    //if(roll_PID < -400){roll_PID=-400;}
+    //if(roll_PID > 400) {roll_PID=400; }
+    //if(pitch_PID < -4000){pitch_PID=-400;}
+    //if(pitch_PID > 400) {pitch_PID=400;}
+    
+    //pwm_R_F  = 125 + input_THROTTLE - roll_PID - pitch_PID;
+    //pwm_R_B  = 125 + input_THROTTLE - roll_PID + pitch_PID;
+    //pwm_L_B  = 125 + input_THROTTLE + roll_PID + pitch_PID;
+    //pwm_L_F  = 125 + input_THROTTLE + roll_PID - pitch_PID;
+   //////////////////////////////////////////////////////////////////////////////////////////////////////////
+		
+		
+		
+		
+		
+		
+		
+		
 		
 		OCR1A=channels[2] * k + m;    // ekvation för gas y = (62.5/1500) * X + (125-1700*(62.5/1500))
 		
