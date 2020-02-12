@@ -203,6 +203,7 @@ int main()
     //if(-3 < pitch_error <3){pitch_pid_i = pitch_pid_i+(pitch_ki*pitch_error);}
     
     //roll_pid_d = roll_kd*((roll_error - roll_previous_error)/elapsedTime);		//elapsed time
+    //pitch_pid_d = pitch_kd*((pitch_error - pitch_previous_error)/elapsedTime);
     
     //roll_PID = roll_pid_p + roll_pid_i + roll_pid_d;
     //pitch_PID = pitch_pid_p + pitch_pid_i + pitch_pid_d;
