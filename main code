@@ -4,16 +4,24 @@
 #include <util/delay.h>
 #include <stdlib.h>
 #include <avr/interrupt.h>
-// #include "i2cmaster.h"
-// #include "lcd.h"*/
+#include <stdio.h>
+#include <avr/pgmspace.h>
+#include <util/atomic.h>
+#include "i2cmaster.h"
+#include "lcd.h"
 
 
-
+// hardware I2C address
+	#define MPU6050_ADDR  (0x68 << 1)
+	
 #define BAUD_RATE_9600_BPS  51  // 9600bps
 #define BAUD_RATE_100000_BPS  4  // 100kbps
 #define RX_BUFFER_SIZE    25
 
-
+// definition of the DS1307 hardware registers - eight 8-bit registers
+enum { gxh, gxl, gyh, gyl, gzh, gzl, DSREGS};
+	
+	
 
 // +-----------------------------------------------------------------------+ //
 
@@ -24,15 +32,61 @@ char _payload[RX_BUFFER_SIZE];
 uint16_t channels[5];
 uint8_t Buffer_loaded = 0;
 uint8_t failsafe = 0;
-double k = 62.5/1500; 
+double k = 62.5/1500;
 double m = 125-(1700 * (62.5/1500));
+
+// memory copy of the DS1307 registers
+uint8_t DS1307_regs[DSREGS];
+
+int16_t mapp(int16_t x, int16_t in_min, int16_t in_max, int16_t out_min, int16_t out_max)
+{
+	return ((x - in_min) * (out_max - out_min) / (in_max - in_min)) + out_min;
+}
+
+// read the eight registers from the DS1307 into the memory
+void MPUread(void)
+{
+	uint8_t i;
+	// ATOMIC BLOCK?????
+		// set stop condition = release bus
+		/* Commence the read. */
+		i2c_start_wait(MPU6050_ADDR+I2C_WRITE);   // est device address and write mode
+		i2c_write(0x43);                          //
+		
+		/* Commence the read. */
+		_delay_us(20);
+		i2c_start_wait(MPU6050_ADDR+I2C_READ);
+		for (i=0; i<(DSREGS-1); i++)
+		{
+			_delay_us(10);
+			DS1307_regs[i] = i2c_read(1);
+		}
+		_delay_us(10);
+		DS1307_regs[DSREGS-1] = i2c_read(0);
+		i2c_stop();
+	
+}
+
+// write the contents of the memory into the eight hardware registers of the DS1307
+void DLPFwrite(void)
+{
+	ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
+	{
+		i2c_start_wait(MPU6050_ADDR+I2C_WRITE);
+		i2c_write(0x1A);  //start address
+		
+		i2c_write(0b00000100);
+		
+		i2c_stop();
+	}
+}
 
 void initMotor(void)
 {
 	
-    DDRB |= (1 << PB1)|(1 << PB0);
+	DDRB |= (1 << PB1)|(1 << PB0);
 
-   OCR1A = 62.5;
+	OCR1A = 62.5;
 	// set PWM to 0% power
 
 	TCCR1A |= (1 << COM0A1);
@@ -46,7 +100,7 @@ void initMotor(void)
 
 	// set prescaler to 1 and starts PWM
 	
-} 
+}
 
 void initSBUS(void)
 {
@@ -72,45 +126,76 @@ void initSBUS(void)
 
 }
 
+void initLCD(void)
+{
+	//init LCD
+	lcd_init(LCD_DISP_ON);
+	lcd_clrscr();
+	lcd_gotoxy(1,0);
+	lcd_puts_P("MPU6050 Test");
+	_delay_ms(1000);
+	lcd_clrscr();
+}
 
 int main()
 {
-	initSBUS();  
-    initMotor();
+	int gx,gy,gz;
+	char buffer[20];
+	int16_t roll_desired_anglespeed;
 	
+	initSBUS();
+	initMotor();
+	initLCD();
 	
 	
 	while(1)
 	{
+		MPUread();
+		
+		//gyro
+		gx  = ( (DS1307_regs[gxh] << 8) | DS1307_regs[gxl] ) / 131;
+		gy  = ( (DS1307_regs[gyh] << 8) | DS1307_regs[gyl] ) / 131;
+		gz  = ( (DS1307_regs[gzh] << 8) | DS1307_regs[gzl] ) / 131;
 		
 		if (Buffer_loaded == 1)
 		{
-		channels[0]  = (uint16_t) ((_payload[1]    |_payload[2] <<8)                     & 0x07FF); // pitch  (högre värde uppåt)  max 1700
-		channels[1]  = (uint16_t) ((_payload[2]>>3 |_payload[3] <<5)                     & 0x07FF); //roll  (högre värde till höger) min 300
-		channels[2]  = (uint16_t) ((_payload[3]>>6 |_payload[4] <<2 |_payload[5]<<10)  	 & 0x07FF); // throttle (högre värde uppåt) min 200
-		channels[3]  = (uint16_t) ((_payload[5]>>1 |_payload[6] <<7)                     & 0x07FF);  // yaw (högre värde höger)
-		channels[4]  = (uint16_t) ((_payload[6]>>4 |_payload[7] <<4)                     & 0x07FF);  // switch  (högre uppåt)
-		 if ( (_payload[24] & 0x10) == 0x10)
-		 {
-		 failsafe = 1;	
-		 }
-		Buffer_loaded = 0;
+			channels[0]  = (uint16_t) ((_payload[1]    |_payload[2] <<8)                     & 0x07FF); // pitch  (högre värde uppåt)  mitten 1001
+			channels[1]  = (uint16_t) ((_payload[2]>>3 |_payload[3] <<5)                     & 0x07FF); //roll  (högre värde till höger) 170-1815
+			channels[2]  = (uint16_t) ((_payload[3]>>6 |_payload[4] <<2 |_payload[5]<<10)  	 & 0x07FF); // throttle (högre värde uppåt) mitt 986
+			channels[3]  = (uint16_t) ((_payload[5]>>1 |_payload[6] <<7)                     & 0x07FF);  // yaw (högre värde höger) mitt 989
+			channels[4]  = (uint16_t) ((_payload[6]>>4 |_payload[7] <<4)                     & 0x07FF);  // switch  (högre uppåt)
+			if ( (_payload[24] & 0x10) == 0x10)
+			{
+				failsafe = 1;
+			}
+			Buffer_loaded = 0;
 		}
 		
-	      OCR1A=channels[2] * k + m;    // ekvation för gas y = (62.5/1500) * X + (125-1700*(62.5/1500))
-	    
+		OCR1A=channels[2] * k + m;    // ekvation för gas y = (62.5/1500) * X + (125-1700*(62.5/1500))
+		
 
-		if (channels[2] * k + m > 100)
+		if (channels[1]  > 1000)
 		{
-		//	PORTB = 0b00000001;
+				PORTB = 0b00000001;
 			
 		}
 		else
 		{
-		//	PORTB = 0x00;
+				PORTB = 0x00;
 		}
 
+roll_desired_anglespeed= mapp(channels[1],200,1700,-90,90);
 
+lcd_clrscr();
+sprintf(buffer, "channel %d ",channels[1]);
+lcd_gotoxy(0,0);
+lcd_puts(buffer);
+
+sprintf(buffer, "map %d ",roll_desired_anglespeed);
+lcd_gotoxy(0,1);
+lcd_puts(buffer);
+		
+		_delay_ms(40);
 		
 	}
 }//end of main
@@ -121,6 +206,7 @@ int main()
 
 ISR(USART_RX_vect)
 {
+	
 	_payload[rxWritePos] = UDR0;
 	
 	if (_payload[0] == 0x0F)              //leta efter header
