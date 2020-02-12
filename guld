@@ -93,7 +93,7 @@ void DS1307read(void)
                              // set stop condition = release bus
     /* Commence the read. */
     i2c_start_wait(MPU6050_ADDR+I2C_WRITE);   // est device address and write mode
-    i2c_write(0x3B);                         // wake up sensor
+    i2c_write(0x43);                          // 
                             
     /* Commence the read. */
     _delay_us(20);
