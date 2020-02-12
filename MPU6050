@@ -1,3 +1,4 @@
+
 /*
  * 20161129_m328_tinyrtc.c
  *
@@ -12,6 +13,7 @@
 #include <util/atomic.h>
 #include "i2cmaster.h"
 #include "lcd.h"
+#include <stdlib.h>
 
 /* Unsigned 8-bit BCD operations. */
 // in BCD each half of an 8-bit unsigned integer represents one digit from 0-9
@@ -99,8 +101,9 @@ lcd_clrscr();
 
 int main(void)
 {
-  uint16_t ax,ay,az,gx,gy,gz,temp;
+  float ax,ay,az,gx,gy,gz,temp;
   char buffer[20];
+  
   init();
   
   while (1) 
@@ -108,31 +111,100 @@ int main(void)
     DS1307read();
 
       // accelerometer
-      ax  = ( (DS1307_regs[axh] << 8) | DS1307_regs[axl] ) / 8192;
-	  ay  = ( (DS1307_regs[ayh] << 8) | DS1307_regs[ayl] ) / 8192; 
-	  az  = ( (DS1307_regs[azh] << 8) | DS1307_regs[azl] ) / 8192;
+      ax  = ( (DS1307_regs[axh] << 8) | DS1307_regs[axl] ) / 16384.0;
+	  ay  = ( (DS1307_regs[ayh] << 8) | DS1307_regs[ayl] ) / 16384.0; 
+	  az  = ( (DS1307_regs[azh] << 8) | DS1307_regs[azl] ) / 16384.0;
 	  
 	  //gyro
-      gx  = ( (DS1307_regs[gxh] << 8) | DS1307_regs[gxl] ) / 131;
-	  gy  = ( (DS1307_regs[gyh] << 8) | DS1307_regs[gyl] ) / 131;
-	  gz  = ( (DS1307_regs[gzh] << 8) | DS1307_regs[gzl] ) / 131;
+      gx  = ( (DS1307_regs[gxh] << 8) | DS1307_regs[gxl] ) / 131.0;
+	  gy  = ( (DS1307_regs[gyh] << 8) | DS1307_regs[gyl] ) / 131.0;
+	  gz  = ( (DS1307_regs[gzh] << 8) | DS1307_regs[gzl] ) / 131.0;
 	  
      // temp= (((DS1307_regs[th]  << 8) + DS1307_regs[tl])/340)+36.53 ;
 	  
-    sprintf(buffer, "x %d ",gx);	
+	 ftoa(gx,buffer,3);
+    //sprintf(buffer, "x %d ",ax);
     lcd_gotoxy(0,1);
 	lcd_puts(buffer);	
-    sprintf(buffer, "y %d ",gy);
+	
+    //sprintf(buffer, "y %d ",ay);
+	ftoa(gy,buffer,3);
     lcd_gotoxy(8,0);
     lcd_puts(buffer);
-	sprintf(buffer, "z %d ",gz);
+	
+	//sprintf(buffer, "z %d ",az);
+	ftoa(gz,buffer,3);
 	lcd_gotoxy(0,0);
 	lcd_puts(buffer);
 	
     
-    _delay_ms(300);
+    _delay_ms(200);
 	lcd_clrscr();
 	
 	
   }
 }
+
+// C program for implementation of ftoa()
+#include <math.h>
+
+// Reverses a string 'str' of length 'len'
+void reverse(char* str, int len)
+{
+	int i = 0, j = len - 1, temp;
+	while (i < j) {
+		temp = str[i];
+		str[i] = str[j];
+		str[j] = temp;
+		i++;
+		j--;
+	}
+}
+
+// Converts a given integer x to string str[].
+// d is the number of digits required in the output.
+// If d is more than the number of digits in x,
+// then 0s are added at the beginning.
+int intToStr(int x, char str[], int d)
+{
+	int i = 0;
+	while (x) {
+		str[i++] = (x % 10) + '0';
+		x = x / 10;
+	}
+	
+	// If number of digits required is more, then
+	// add 0s at the beginning
+	while (i < d)
+	str[i++] = '0';
+	
+	reverse(str, i);
+	str[i] = '\0';
+	return i;
+}
+
+// Converts a floating-point/double number to a string.
+void ftoa(float n, char* res, int afterpoint)
+{
+	// Extract integer part
+	int ipart = (int)n;
+	
+	// Extract floating part
+	float fpart = n - (float)ipart;
+	
+	// convert integer part to string
+	int i = intToStr(ipart, res, 0);
+	
+	// check for display option after point
+	if (afterpoint != 0) {
+		res[i] = '.'; // add dot
+		
+		// Get the value of fraction part upto given no.
+		// of points after dot. The third parameter
+		// is needed to handle cases like 233.007
+		fpart = fpart * pow(10, afterpoint);
+		
+		intToStr((int)fpart, res + i + 1, afterpoint);
+	}
+}
+
