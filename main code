@@ -25,7 +25,6 @@ enum { gxh, gxl, gyh, gyl, gzh, gzl, DSREGS};
 
 // +-----------------------------------------------------------------------+ //
 
-// char serialBuffer[RX_BUFFER_SIZE];
 uint8_t rxReadPos = 0;
 uint8_t rxWritePos = 0;
 char _payload[RX_BUFFER_SIZE];
@@ -35,7 +34,7 @@ uint8_t failsafe = 0;
 double k = 62.5/1500;
 double m = 125-(1700 * (62.5/1500));
 
-// memory copy of the DS1307 registers
+// memory copy of the MPU6050 registers
 uint8_t DS1307_regs[DSREGS];
 
 int16_t mapp(int16_t x, int16_t in_min, int16_t in_max, int16_t out_min, int16_t out_max)
@@ -43,7 +42,7 @@ int16_t mapp(int16_t x, int16_t in_min, int16_t in_max, int16_t out_min, int16_t
 	return ((x - in_min) * (out_max - out_min) / (in_max - in_min)) + out_min;
 }
 
-// read the eight registers from the DS1307 into the memory
+// read the gyro registers from the MPU6050 into the memory
 void MPUread(void)
 {
 	uint8_t i;
@@ -67,7 +66,7 @@ void MPUread(void)
 	
 }
 
-// write the contents of the memory into the eight hardware registers of the DS1307
+// Set Low Pass filter for MPU6050
 void DLPFwrite(void)
 {
 	ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
@@ -85,21 +84,17 @@ void initMotor(void)
 {
 	
 	DDRB |= (1 << PB1)|(1 << PB0);
-
-	OCR1A = 62.5;
-	// set PWM to 0% power
-
-	TCCR1A |= (1 << COM0A1);
-	// set none-inverting mode
-
-	TCCR1A |= (1 << WGM01) | (1 << WGM00);
-
-	// set fast PWM Mode
-
-	TCCR1B |= (1 << CS11);
-
-	// set prescaler to 1 and starts PWM
 	
+	
+	
+	TCCR1A |= (1 << COM1A1) | (0 << WGM10) | (1 << WGM11);
+	// set non-inverting mode
+
+	TCCR1B |= (1 << WGM12) | (1 << WGM13) | (1 << CS10);
+	// set fast PWM Mode
+	
+	 ICR1 = 8000000/4000; // frequency F_cpu/wanted freq = ICR1
+	 OCR1A = 1000;  // set duty cycle
 }
 
 void initSBUS(void)
@@ -108,22 +103,14 @@ void initSBUS(void)
 
 	unsigned int ubrr = BAUD_RATE_100000_BPS;
 
-
 	/* Set Baudrate  */
-
 	UBRR0H = (ubrr>>8); // Shift the 16bit value ubrr 8 times to the right and transfer the upper 8 bits to UBBR0H register.
-
 	UBRR0L = (ubrr);    // Copy the 16 bit value ubrr to the 8 bit UBBR0L register,Upper 8 bits are truncated while lower 8 bits are copied
 
 	
-
-
 	// init reciever
-
 	UCSR0C = 0b00101110;       /* Set frame format: 8data, 2stop bit, even parity */
-
 	UCSR0B = (1 << RXEN0) | (1 << RXCIE0) | (1<<TXEN0) ;   /* Enable  rx, tx  , enable interrupts         */
-
 }
 
 void initLCD(void)
@@ -132,7 +119,7 @@ void initLCD(void)
 	lcd_init(LCD_DISP_ON);
 	lcd_clrscr();
 	lcd_gotoxy(1,0);
-	lcd_puts_P("MPU6050 Test");
+	lcd_puts_P("MPU6050 TEST");
 	_delay_ms(1000);
 	lcd_clrscr();
 }
@@ -146,6 +133,7 @@ int main()
 	initSBUS();
 	initMotor();
 	initLCD();
+	DLPFwrite();
 	
 	////////////////KP////////////////////
 	
@@ -227,7 +215,7 @@ int main()
 		
 		
 		
-		OCR1A=channels[2] * k + m;    // ekvation för gas y = (62.5/1500) * X + (125-1700*(62.5/1500))
+		//OCR1A=channels[2] * k + m;    // ekvation för gas y = (62.5/1500) * X + (125-1700*(62.5/1500))
 		
 
 		if (channels[1]  > 1000)
