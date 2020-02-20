@@ -80,9 +80,23 @@ void DLPFwrite(void)
 	}
 }
 
+void initI2C(void)
+{
+	i2c_init();
+	// powe management 0x6b
+	
+	i2c_start_wait(MPU6050_ADDR+I2C_WRITE);
+	_delay_us(20);
+	i2c_write(0x6b);
+	_delay_us(20);
+	i2c_write(0x00);
+	_delay_us(20);
+	i2c_stop();
+}
+
 void initMotor(void)
 {
-	
+	DDRD = 0b11110000;
 	DDRB |= (1 << PB1)|(1 << PB0);
 	
 	
@@ -93,8 +107,8 @@ void initMotor(void)
 	TCCR1B |= (1 << WGM12) | (1 << WGM13) | (1 << CS10);
 	// set fast PWM Mode
 	
-	 ICR1 = 8000000/4000; // frequency F_cpu/wanted freq = ICR1
-	 OCR1A = 1000;  // set duty cycle
+	 ICR1 = 8000000/2000; // frequency F_cpu/wanted freq = ICR1
+	 OCR1A = 1000;  // set duty cycle, 1000-2000, 0-100%
 }
 
 void initSBUS(void)
@@ -133,6 +147,7 @@ int main()
 	initSBUS();
 	initMotor();
 	initLCD();
+	initI2C();
 	DLPFwrite();
 	
 	////////////////KP////////////////////
@@ -148,6 +163,8 @@ int main()
 	while(1)
 	{
 		MPUread();
+	
+		
 		
 		//gyro
 		gx  = ( (DS1307_regs[gxh] << 8) | DS1307_regs[gxl] ) / 131;
@@ -207,46 +224,58 @@ int main()
     //pwm_L_F  = 125 + input_THROTTLE + roll_PID - pitch_PID;
    //////////////////////////////////////////////////////////////////////////////////////////////////////////
 		
+		/*
+		/////motor test//////
+		PORTD = 0b10000000 ;
+		_delay_us(250);
+		PORTD = 0b01000000;
+		_delay_us(250);
+		PORTD = 0b00100000;
+		_delay_us(250);
+		PORTD = 0b00010000;
+		_delay_us(250);
+		_delay_us(1000);
+		
+		*/
 		
 		
 		
 		
 		
+		//////////////////////
 		
 		
 		
+	
 		//OCR1A=channels[2] * k + m;    // ekvation för gas y = (62.5/1500) * X + (125-1700*(62.5/1500))
 		
 
-		if (channels[1]  > 1000)
-		{
-				PORTB = 0b00000001;
-			
-		}
-		else
-		{
-				PORTB = 0x00;
-		}
+		
+ /*   roll_desired_anglespeed= mapp(channels[1],200,1700,-90,90);
 
-roll_desired_anglespeed= mapp(channels[1],200,1700,-90,90);
-
-lcd_clrscr();
-sprintf(buffer, "channel %d ",channels[1]);
+ lcd_clrscr();
+sprintf(buffer, "GyroX %d ",gx);
 lcd_gotoxy(0,0);
 lcd_puts(buffer);
 
-sprintf(buffer, "map %d ",roll_desired_anglespeed);
+sprintf(buffer, "GyroY %d ",gy);
 lcd_gotoxy(0,1);
 lcd_puts(buffer);
 		
 		_delay_ms(40);
-		
+		*/
 	}
 }//end of main
 
 
-
-
+/*
+ISR(TIMER1_OVF_vect)
+{
+	PORTD=0b10000000;
+	_delay_ms(1);
+	PORTD=0x00;
+}
+*/
 
 ISR(USART_RX_vect)
 {
