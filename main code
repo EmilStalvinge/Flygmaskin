@@ -31,6 +31,7 @@ char _payload[RX_BUFFER_SIZE];
 uint16_t channels[5];
 uint8_t Buffer_loaded = 0;
 uint8_t failsafe = 0;
+uint8_t Motorcount = 1;
 double k = 62.5/1500;
 double m = 125-(1700 * (62.5/1500));
 
@@ -107,8 +108,11 @@ void initMotor(void)
 	TCCR1B |= (1 << WGM12) | (1 << WGM13) | (1 << CS10);
 	// set fast PWM Mode
 	
-	 ICR1 = 8000000/2000; // frequency F_cpu/wanted freq = ICR1
+	TIMSK1 = (1 << OCIE1B);
+	
+	 ICR1 = 8000000UL/4000; // frequency F_cpu/wanted freq = ICR1
 	 OCR1A = 1000;  // set duty cycle, 1000-2000, 0-100%
+	 OCR1B= 8000000UL/4000 -100;
 }
 
 void initSBUS(void)
@@ -164,8 +168,6 @@ int main()
 	{
 		MPUread();
 	
-		
-		
 		//gyro
 		gx  = ( (DS1307_regs[gxh] << 8) | DS1307_regs[gxl] ) / 131;
 		gy  = ( (DS1307_regs[gyh] << 8) | DS1307_regs[gyl] ) / 131;
@@ -224,27 +226,7 @@ int main()
     //pwm_L_F  = 125 + input_THROTTLE + roll_PID - pitch_PID;
    //////////////////////////////////////////////////////////////////////////////////////////////////////////
 		
-		/*
-		/////motor test//////
-		PORTD = 0b10000000 ;
-		_delay_us(250);
-		PORTD = 0b01000000;
-		_delay_us(250);
-		PORTD = 0b00100000;
-		_delay_us(250);
-		PORTD = 0b00010000;
-		_delay_us(250);
-		_delay_us(1000);
-		
-		*/
-		
-		
-		
-		
-		
-		//////////////////////
-		
-		
+	
 		
 	
 		//OCR1A=channels[2] * k + m;    // ekvation för gas y = (62.5/1500) * X + (125-1700*(62.5/1500))
@@ -268,14 +250,48 @@ lcd_puts(buffer);
 }//end of main
 
 
-/*
-ISR(TIMER1_OVF_vect)
+
+ISR(TIMER1_COMPB_vect)
 {
-	PORTD=0b10000000;
-	_delay_ms(1);
-	PORTD=0x00;
+switch (Motorcount)
+{
+case 1: 
+OCR1A = (channels[2]/2)+900;
+      PORTD=0b00010000;                               //byt bitar
+	break;
+	
+case 2:
+ OCR1A = (channels[2]/2)+900;
+      PORTD=0b00100000;                                 //byt bitar
+   break;
+   
+case 3:
+   //OCR1A = 400;
+     PORTD=0b00000000;                                   //byt bitar
+   break;
+   
+case 4:
+  OCR1A = (channels[2]/2)+900;
+      PORTD=0b10000000;                                 //byt bitar
+   break;
+   
+   case 5:
+   OCR1A = (channels[2]/2)+900;
+   PORTD=0b01000000;                                 //byt bitar
+   break;
+   
+   
+   default:
+   OCR1A=1000;
+   PORTD=0x00;
+   if(Motorcount==8)
+   {
+	   Motorcount=0;
+   }  
+} //end of switch
+Motorcount++;
 }
-*/
+
 
 ISR(USART_RX_vect)
 {
