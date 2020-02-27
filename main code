@@ -12,17 +12,15 @@
 
 
 // hardware I2C address
-	#define MPU6050_ADDR  (0x68 << 1)
+#define MPU6050_ADDR  (0x68 << 1)
 	
 #define BAUD_RATE_9600_BPS  51  // 9600bps
-#define BAUD_RATE_100000_BPS  4  // 100kbps
+#define BAUD_RATE_100000_BPS  4  // 100_thbps
 #define RX_BUFFER_SIZE    25
 
 // definition of the DS1307 hardware registers - eight 8-bit registers
 enum { gxh, gxl, gyh, gyl, gzh, gzl, DSREGS};
 	
-	
-
 // +-----------------------------------------------------------------------+ //
 
 uint8_t rxReadPos = 0;
@@ -32,16 +30,21 @@ uint16_t channels[5];
 uint8_t Buffer_loaded = 0;
 uint8_t failsafe = 0;
 uint8_t Motorcount = 1;
-double k = 62.5/1500;
-double m = 125-(1700 * (62.5/1500));
+
+uint8_t timer = 10;
+uint8_t timerPrev;
+
+float pwm_R_F, pwm_R_B, pwm_L_F, pwm_L_B;
+float k_throttle = 2/3;
+float m_throttle = 1300 * (2/3);
+float k_pitch = 3/25;
+float m_pitch = -114;
+
+
+
 
 // memory copy of the MPU6050 registers
 uint8_t DS1307_regs[DSREGS];
-
-int16_t mapp(int16_t x, int16_t in_min, int16_t in_max, int16_t out_min, int16_t out_max)
-{
-	return ((x - in_min) * (out_max - out_min) / (in_max - in_min)) + out_min;
-}
 
 // read the gyro registers from the MPU6050 into the memory
 void MPUread(void)
@@ -95,10 +98,17 @@ void initI2C(void)
 	i2c_stop();
 }
 
+void initTime(void)
+{
+	TCCR0B=(1 << CS00 );
+	TIMSK0=(1 << TOIE0);
+}
+
 void initMotor(void)
 {
 	DDRD = 0b11110000;
 	DDRB |= (1 << PB1)|(1 << PB0);
+	
 	
 	
 	TCCR1A |= (1 << COM1A1) | (0 << WGM10) | (1 << WGM11);
@@ -142,51 +152,63 @@ void initLCD(void)
 	lcd_clrscr();
 }
 */
-
 int main()
 {
+	float gx,gy,gz;
+	//char buffer[20];   //Only for LCD Screen
 	
+	/////////////////PID variabler////////////////////
+	float input_THROTTLE, roll_error, pitch_error, roll_pid_p, pitch_pid_p, roll_pid_d, pitch_pid_d,roll_PID,pitch_PID, yaw_error, yaw_pid_p, yaw_PID, yaw_pid_i;
+	float roll_desired_anglevelocity, pitch_desired_anglevelocity,yaw_desired_anglevelocity, roll_anglevelocity, pitch_anglevelocity,yaw_anglevelocity, pwm_R_F, pwm_R_B, pwm_L_F, pwm_L_B;
+	float roll_pid_i = 0;
+	float pitch_pid_i = 0;
+	float roll_previous_error = 0;
+	float pitch_previous_error = 0;
+	float elapsedTime;
+	//////////////////////////////////////////////////
 	
-	int gx,gy,gz;
-	char buffer[20];
-	int16_t roll_desired_anglespeed;
-	
+	////////////////INITIALIZATION ///////////////////
 	initSBUS();
 	initMotor();
-	
 	//initLCD();
 	initI2C();
-	
 	DLPFwrite();
+	//initTime();
+	//////////////////////////////////////////////////
 	
 	
+	////////////////PID konstanter////////////////////
 	
-	////////////////KP////////////////////
+	float roll_kp  = 1;
+   	float pitch_kp = 1;
+	float yaw_kp   = 1;   
+	float roll_ki  = 0;
+   	float pitch_ki = 0;
+	float yaw_ki   = 0;   
+	float roll_kd  = 0;
+   	float pitch_kd = 0;
 	
-	//unit8_t roll_kp =  1;
-   	//uint8_t pitch_kp = 1;
-	//unit8_t roll_ki =  0;
-   	//uint8_t pitch_ki = 0;
-	//unit8_t roll_kd =  0;
-   	//uint8_t pitch_kd = 0;
-	
+	//////////////////////////////////////////////////
 	
 	while(1)
 	{
-		MPUread();
 		
+		
+		MPUread();
+	
 		//gyro
 		gx  = ( (DS1307_regs[gxh] << 8) | DS1307_regs[gxl] ) / 131;
 		gy  = ( (DS1307_regs[gyh] << 8) | DS1307_regs[gyl] ) / 131;
 		gz  = ( (DS1307_regs[gzh] << 8) | DS1307_regs[gzl] ) / 131;
 		
+		
 		if (Buffer_loaded == 1)
 		{
-			channels[0]  = (uint16_t) ((_payload[1]    |_payload[2] <<8)                     & 0x07FF); // pitch  (högre värde uppåt)  mitten 1001
-			channels[1]  = (uint16_t) ((_payload[2]>>3 |_payload[3] <<5)                     & 0x07FF); //roll  (högre värde till höger) 170-1815
-			channels[2]  = (uint16_t) ((_payload[3]>>6 |_payload[4] <<2 |_payload[5]<<10)  	 & 0x07FF); // throttle (högre värde uppåt) mitt 986
-			channels[3]  = (uint16_t) ((_payload[5]>>1 |_payload[6] <<7)                     & 0x07FF);  // yaw (högre värde höger) mitt 989
-			channels[4]  = (uint16_t) ((_payload[6]>>4 |_payload[7] <<4)                     & 0x07FF);  // switch  (högre uppåt)
+			channels[0]  = (uint16_t) ((_payload[1]    |_payload[2] <<8)                     & 0x07FF); // pitch    (högre värde uppåt)      mitten 1001
+			channels[1]  = (uint16_t) ((_payload[2]>>3 |_payload[3] <<5)                     & 0x07FF); // roll     (högre värde till höger) 170-1815
+			channels[2]  = (uint16_t) ((_payload[3]>>6 |_payload[4] <<2 |_payload[5]<<10)  	 & 0x07FF); // throttle (högre värde uppåt)      mitt 986
+			channels[3]  = (uint16_t) ((_payload[5]>>1 |_payload[6] <<7)                     & 0x07FF); // yaw      (högre värde höger)      mitt 989
+			channels[4]  = (uint16_t) ((_payload[6]>>4 |_payload[7] <<4)                     & 0x07FF); // switch   (högre uppåt)
 			if ( (_payload[24] & 0x10) == 0x10)
 			{
 				failsafe = 1;
@@ -195,105 +217,101 @@ int main()
 		}
 		
 		
-		
 	
 		
-		if (channels[2] > 1100)
-		{
-			PORTB= 0b00000001;;
-		}
-		else
-		{
-          PORTB= 0b00000000;
-		}
-		
-		
-		
-		/*///////////////////////////P I D///////////////////////////////////*/
-    
+		/*///////////////////////////P I D  L O O P///////////////////////////////////*/
+      
+	    
+	  roll_anglevelocity  = gx;  //detta bör vara gx eller gy 
+	  pitch_anglevelocity = gy;  //detta bör vara gx eller gy
+	  yaw_anglevelocity   = gz;
+	 
+      input_THROTTLE              = k_throttle * channels[2] + m_throttle;
+	  yaw_desired_anglevelocity   = k_pitch    * channels[3] + m_pitch;
+      roll_desired_anglevelocity  = k_pitch    * channels[1] + m_pitch; 
+      pitch_desired_anglevelocity = k_pitch    * channels[0] + m_pitch; 
 
-    //roll_desired_angelvelocity = 
-    //pitch_desired_angelvelocity =  
-         
+			 /* 
+      roll_error  = roll_anglevelocity  - roll_desired_anglevelocity;
+      pitch_error = pitch_anglevelocity - pitch_desired_anglevelocity;    
+      yaw_error   = yaw_anglevelocity   - yaw_desired_anglevelocity;   
+	
+      roll_pid_p  = roll_kp  * roll_error;
+      pitch_pid_p = pitch_kp * pitch_error;
+	  yaw_pid_p   = yaw_kp   * yaw_error;
     
-    //roll_error = roll_angelvelocity - roll_desired_angelvelocity;
-    //pitch_error = pitch_angelvelocity - pitch_desired_angelvelocity;    
+      if((-3 < roll_error)  & (roll_error  < 3)) {roll_pid_i  = roll_pid_i  + (roll_ki  * roll_error );}
+      if((-3 < pitch_error) & (pitch_error < 3)) {pitch_pid_i = pitch_pid_i + (pitch_ki * pitch_error);}
+	  if((-3 < yaw_error)   & (yaw_error   < 3)) {yaw_pid_i   = yaw_pid_i   + (yaw_ki   * yaw_error  );}
+			  
+      elapsedTime = (timer*32) / 1000000;  //elapsed time in seconds
+	  timer = 0;
+	  
+      roll_pid_d  = roll_kd  *((roll_error  - roll_previous_error )/elapsedTime);		
+      pitch_pid_d = pitch_kd *((pitch_error - pitch_previous_error)/elapsedTime);
     
-    //roll_pid_p = roll_kp*roll_error;
-    //pitch_pid_p = pitch_kp*pitch_error;
+      roll_PID  = roll_pid_p  + roll_pid_i  + roll_pid_d;
+      pitch_PID = pitch_pid_p + pitch_pid_i + pitch_pid_d;
+	  yaw_PID   = yaw_pid_p   + yaw_pid_i;
     
-    //if(-3 < roll_error <3){roll_pid_i = roll_pid_i+(roll_ki*roll_error);}
-    //if(-3 < pitch_error <3){pitch_pid_i = pitch_pid_i+(pitch_ki*pitch_error);}
+      if(roll_PID  < -400) {roll_PID  = -400;}
+      if(roll_PID  >  400) {roll_PID  =  400;}
+      if(pitch_PID < -400) {pitch_PID = -400;}
+      if(pitch_PID >  400) {pitch_PID =  400;}
     
-    //roll_pid_d = roll_kd*((roll_error - roll_previous_error)/elapsedTime);		//elapsed time
-    //pitch_pid_d = pitch_kd*((pitch_error - pitch_previous_error)/elapsedTime);
-    
-    //roll_PID = roll_pid_p + roll_pid_i + roll_pid_d;
-    //pitch_PID = pitch_pid_p + pitch_pid_i + pitch_pid_d;
-    
-    //if(roll_PID < -400){roll_PID=-400;}
-    //if(roll_PID > 400) {roll_PID=400; }
-    //if(pitch_PID < -4000){pitch_PID=-400;}
-    //if(pitch_PID > 400) {pitch_PID=400;}
-    
-    //pwm_R_F  = 125 + input_THROTTLE - roll_PID - pitch_PID;
-    //pwm_R_B  = 125 + input_THROTTLE - roll_PID + pitch_PID;
-    //pwm_L_B  = 125 + input_THROTTLE + roll_PID + pitch_PID;
-    //pwm_L_F  = 125 + input_THROTTLE + roll_PID - pitch_PID;
+	
+      pwm_R_F  = input_THROTTLE - roll_PID - pitch_PID + yaw_PID;
+      pwm_R_B  = input_THROTTLE - roll_PID + pitch_PID - yaw_PID;
+      pwm_L_B  = input_THROTTLE + roll_PID + pitch_PID + yaw_PID;
+      pwm_L_F  = input_THROTTLE + roll_PID - pitch_PID - yaw_PID;
+	
+	if(pwm_R_F > 2000) {pwm_R_F = 2000;}
+	if(pwm_R_B > 2000) {pwm_R_B = 2000;}
+	if(pwm_L_F > 2000) {pwm_L_F = 2000;}
+	if(pwm_L_B > 2000) {pwm_L_B = 2000;}
+		
+	if(pwm_R_F < 1000) {pwm_R_F = 1000;}
+	if(pwm_R_B < 1000) {pwm_R_B = 1000;}
+	if(pwm_L_F < 1000) {pwm_L_F = 1000;}
+	if(pwm_L_B < 1000) {pwm_L_B = 1000;}
+	
+	
+	  roll_previous_error  = roll_error;
+	  pitch_previous_error = pitch_error;
    //////////////////////////////////////////////////////////////////////////////////////////////////////////
 		
-	
+	*/
 		
-	
-		//OCR1A=channels[2] * k + m;    // ekvation för gas y = (62.5/1500) * X + (125-1700*(62.5/1500))
-		
-
-		
- /*   roll_desired_anglespeed= mapp(channels[1],200,1700,-90,90);
-
- lcd_clrscr();
-sprintf(buffer, "GyroX %d ",gx);
-lcd_gotoxy(0,0);
-lcd_puts(buffer);
-
-sprintf(buffer, "GyroY %d ",gy);
-lcd_gotoxy(0,1);
-lcd_puts(buffer);
-		
-		_delay_ms(40);
-		*/
 	}
 }//end of main
-
-
 
 ISR(TIMER1_COMPB_vect)
 {
 switch (Motorcount)
 {
 case 1: 
-OCR1A = channels[2];
-      PORTD=0b00010000;                               //byt bitar
+OCR1A = 1000;			//LF
+      PORTD=0b00010000;                                //byt bitar
 	break;
 	
 case 2:
- OCR1A = channels[2];
+ OCR1A = 1000;			//LB
       PORTD=0b00100000;                                 //byt bitar
    break;
    
 case 3:
-   //OCR1A = 400;
-     PORTD=0b00000000;                                   //byt bitar
+   
+     PORTD=0b00000000;                                  //byt bitar
    break;
    
 case 4:
-  OCR1A = channels[2];
+  OCR1A = 1000;			//RB
       PORTD=0b10000000;                                 //byt bitar
    break;
    
    case 5:
-   OCR1A = channels[2];
-   PORTD=0b01000000;                                 //byt bitar
+   OCR1A = 1000;			//RF		
+   PORTD=0b01000000;                                    //byt bitar
    break;
    
    
@@ -308,6 +326,10 @@ case 4:
 Motorcount++;
 }
 
+ISR(TIMER0_OVF_vect)
+{
+	timer++;
+}
 
 ISR(USART_RX_vect)
 {
