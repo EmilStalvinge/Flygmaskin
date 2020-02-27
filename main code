@@ -8,7 +8,7 @@
 #include <avr/pgmspace.h>
 #include <util/atomic.h>
 #include "i2cmaster.h"
-#include "lcd.h"
+//#include "lcd.h"
 
 
 // hardware I2C address
@@ -101,7 +101,6 @@ void initMotor(void)
 	DDRB |= (1 << PB1)|(1 << PB0);
 	
 	
-	
 	TCCR1A |= (1 << COM1A1) | (0 << WGM10) | (1 << WGM11);
 	// set non-inverting mode
 
@@ -131,6 +130,7 @@ void initSBUS(void)
 	UCSR0B = (1 << RXEN0) | (1 << RXCIE0) | (1<<TXEN0) ;   /* Enable  rx, tx  , enable interrupts         */
 }
 
+/*
 void initLCD(void)
 {
 	//init LCD
@@ -141,18 +141,25 @@ void initLCD(void)
 	_delay_ms(1000);
 	lcd_clrscr();
 }
+*/
 
 int main()
 {
+	
+	
 	int gx,gy,gz;
 	char buffer[20];
 	int16_t roll_desired_anglespeed;
 	
 	initSBUS();
 	initMotor();
-	initLCD();
+	
+	//initLCD();
 	initI2C();
+	
 	DLPFwrite();
+	
+	
 	
 	////////////////KP////////////////////
 	
@@ -167,7 +174,7 @@ int main()
 	while(1)
 	{
 		MPUread();
-	
+		
 		//gyro
 		gx  = ( (DS1307_regs[gxh] << 8) | DS1307_regs[gxl] ) / 131;
 		gy  = ( (DS1307_regs[gyh] << 8) | DS1307_regs[gyl] ) / 131;
@@ -189,7 +196,16 @@ int main()
 		
 		
 		
+	
 		
+		if (channels[2] > 1100)
+		{
+			PORTB= 0b00000001;;
+		}
+		else
+		{
+          PORTB= 0b00000000;
+		}
 		
 		
 		
@@ -256,12 +272,12 @@ ISR(TIMER1_COMPB_vect)
 switch (Motorcount)
 {
 case 1: 
-OCR1A = (channels[2]/2)+900;
+OCR1A = channels[2];
       PORTD=0b00010000;                               //byt bitar
 	break;
 	
 case 2:
- OCR1A = (channels[2]/2)+900;
+ OCR1A = channels[2];
       PORTD=0b00100000;                                 //byt bitar
    break;
    
@@ -271,12 +287,12 @@ case 3:
    break;
    
 case 4:
-  OCR1A = (channels[2]/2)+900;
+  OCR1A = channels[2];
       PORTD=0b10000000;                                 //byt bitar
    break;
    
    case 5:
-   OCR1A = (channels[2]/2)+900;
+   OCR1A = channels[2];
    PORTD=0b01000000;                                 //byt bitar
    break;
    
