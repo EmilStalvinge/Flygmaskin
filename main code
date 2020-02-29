@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <avr/pgmspace.h>
 #include <util/atomic.h>
+#include <math.h>
 #include "i2cmaster.h"
 //#include "lcd.h"
 
@@ -23,33 +24,35 @@ enum { gxh, gxl, gyh, gyl, gzh, gzl, DSREGS};
 	
 // +-----------------------------------------------------------------------+ //
 
-uint8_t rxReadPos = 0;
-uint8_t rxWritePos = 0;
+int16_t rxReadPos = 0;
+int16_t rxWritePos = 0;
 char _payload[RX_BUFFER_SIZE];
-uint16_t channels[5];
-uint8_t Buffer_loaded = 0;
-uint8_t failsafe = 0;
-uint8_t Motorcount = 1;
+int16_t channels[5];
+int16_t Buffer_loaded = 0;
+int16_t failsafe = 0;
+int16_t Motorcount = 1;
 
-uint8_t timer = 10;
-uint8_t timerPrev;
+int16_t timer = 10;
+int16_t timerPrev;
 
-float pwm_R_F, pwm_R_B, pwm_L_F, pwm_L_B;
-float k_throttle = 2/3;
-float m_throttle = 1300 * (2/3);
-float k_pitch = 3/25;
-float m_pitch = -114;
+int16_t pwm_R_F, pwm_R_B, pwm_L_F, pwm_L_B;
+int16_t k_throttle = 2/3;
+int16_t m_throttle = 1300 * (2/3);
+int16_t k_pitch = 3/25;
+int16_t m_pitch = -114;
+int16_t input_THROTTLE =0;
+int16_t rf =0;
 
 
 
 
 // memory copy of the MPU6050 registers
-uint8_t DS1307_regs[DSREGS];
+int16_t DS1307_regs[DSREGS];
 
 // read the gyro registers from the MPU6050 into the memory
 void MPUread(void)
 {
-	uint8_t i;
+	int16_t i;
 	// ATOMIC BLOCK?????
 		// set stop condition = release bus
 		/* Commence the read. */
@@ -126,8 +129,6 @@ void initMotor(void)
 
 void initSBUS(void)
 {
-	sei();
-
 	unsigned int ubrr = BAUD_RATE_100000_BPS;
 
 	/* Set Baudrate  */
@@ -152,19 +153,22 @@ void initLCD(void)
 	lcd_clrscr();
 }
 */
+
 int main()
 {
-	float gx,gy,gz;
+	sei();
+	
+	int16_t gx,gy,gz;
 	//char buffer[20];   //Only for LCD Screen
 	
 	/////////////////PID variabler////////////////////
-	float input_THROTTLE, roll_error, pitch_error, roll_pid_p, pitch_pid_p, roll_pid_d, pitch_pid_d,roll_PID,pitch_PID, yaw_error, yaw_pid_p, yaw_PID, yaw_pid_i;
-	float roll_desired_anglevelocity, pitch_desired_anglevelocity,yaw_desired_anglevelocity, roll_anglevelocity, pitch_anglevelocity,yaw_anglevelocity, pwm_R_F, pwm_R_B, pwm_L_F, pwm_L_B;
-	float roll_pid_i = 0;
-	float pitch_pid_i = 0;
-	float roll_previous_error = 0;
-	float pitch_previous_error = 0;
-	float elapsedTime;
+	int16_t roll_error, pitch_error, roll_pid_p, pitch_pid_p, roll_pid_d, pitch_pid_d,roll_PID,pitch_PID, yaw_error, yaw_pid_p, yaw_PID, yaw_pid_i;
+	int16_t roll_desired_anglevelocity, pitch_desired_anglevelocity,yaw_desired_anglevelocity, roll_anglevelocity, pitch_anglevelocity,yaw_anglevelocity, pwm_R_F, pwm_R_B, pwm_L_F, pwm_L_B;
+	int16_t roll_pid_i = 0;
+	int16_t pitch_pid_i = 0;
+	int16_t roll_previous_error = 0;
+	int16_t pitch_previous_error = 0;
+	int16_t elapsedTime;
 	//////////////////////////////////////////////////
 	
 	////////////////INITIALIZATION ///////////////////
@@ -179,14 +183,14 @@ int main()
 	
 	////////////////PID konstanter////////////////////
 	
-	float roll_kp  = 1;
-   	float pitch_kp = 1;
-	float yaw_kp   = 1;   
-	float roll_ki  = 0;
-   	float pitch_ki = 0;
-	float yaw_ki   = 0;   
-	float roll_kd  = 0;
-   	float pitch_kd = 0;
+	int16_t roll_kp  = 1;
+   	int16_t pitch_kp = 1;
+	int16_t yaw_kp   = 1;   
+	int16_t roll_ki  = 0;
+   	int16_t pitch_ki = 0;
+	int16_t yaw_ki   = 0;   
+	int16_t roll_kd  = 0;
+   	int16_t pitch_kd = 0;
 	
 	//////////////////////////////////////////////////
 	
@@ -204,11 +208,11 @@ int main()
 		
 		if (Buffer_loaded == 1)
 		{
-			channels[0]  = (uint16_t) ((_payload[1]    |_payload[2] <<8)                     & 0x07FF); // pitch    (högre värde uppåt)      mitten 1001
-			channels[1]  = (uint16_t) ((_payload[2]>>3 |_payload[3] <<5)                     & 0x07FF); // roll     (högre värde till höger) 170-1815
-			channels[2]  = (uint16_t) ((_payload[3]>>6 |_payload[4] <<2 |_payload[5]<<10)  	 & 0x07FF); // throttle (högre värde uppåt)      mitt 986
-			channels[3]  = (uint16_t) ((_payload[5]>>1 |_payload[6] <<7)                     & 0x07FF); // yaw      (högre värde höger)      mitt 989
-			channels[4]  = (uint16_t) ((_payload[6]>>4 |_payload[7] <<4)                     & 0x07FF); // switch   (högre uppåt)
+			channels[0]  = (int16_t) ((_payload[1]    |_payload[2] <<8)                     & 0x07FF); // pitch    (högre värde uppåt)      mitten 1001
+			channels[1]  = (int16_t) ((_payload[2]>>3 |_payload[3] <<5)                     & 0x07FF); // roll     (högre värde till höger) 170-1815
+			channels[2]  = (int16_t) ((_payload[3]>>6 |_payload[4] <<2 |_payload[5]<<10)  	 & 0x07FF); // throttle (högre värde uppåt)      mitt 986
+			channels[3]  = (int16_t) ((_payload[5]>>1 |_payload[6] <<7)                     & 0x07FF); // yaw      (högre värde höger)      mitt 989
+			channels[4]  = (int16_t) ((_payload[6]>>4 |_payload[7] <<4)                     & 0x07FF); // switch   (högre uppåt)
 			if ( (_payload[24] & 0x10) == 0x10)
 			{
 				failsafe = 1;
@@ -217,11 +221,13 @@ int main()
 		}
 		
 		
-	
+	  input_THROTTLE =channels[2];
+	  rf = input_THROTTLE;
+	  
 		
 		/*///////////////////////////P I D  L O O P///////////////////////////////////*/
       
-	    
+	  
 	  roll_anglevelocity  = gx;  //detta bör vara gx eller gy 
 	  pitch_anglevelocity = gy;  //detta bör vara gx eller gy
 	  yaw_anglevelocity   = gz;
@@ -230,8 +236,10 @@ int main()
 	  yaw_desired_anglevelocity   = k_pitch    * channels[3] + m_pitch;
       roll_desired_anglevelocity  = k_pitch    * channels[1] + m_pitch; 
       pitch_desired_anglevelocity = k_pitch    * channels[0] + m_pitch; 
+	  
+	  
 
-			 /* 
+	        
       roll_error  = roll_anglevelocity  - roll_desired_anglevelocity;
       pitch_error = pitch_anglevelocity - pitch_desired_anglevelocity;    
       yaw_error   = yaw_anglevelocity   - yaw_desired_anglevelocity;   
@@ -280,7 +288,7 @@ int main()
 	  pitch_previous_error = pitch_error;
    //////////////////////////////////////////////////////////////////////////////////////////////////////////
 		
-	*/
+	
 		
 	}
 }//end of main
@@ -291,27 +299,27 @@ switch (Motorcount)
 {
 case 1: 
 OCR1A = 1000;			//LF
-      PORTD=0b00010000;                                //byt bitar
+      PORTD=0b00010000;                                //byt motor
 	break;
 	
 case 2:
  OCR1A = 1000;			//LB
-      PORTD=0b00100000;                                 //byt bitar
+      PORTD=0b00100000;                                 //byt motor
    break;
    
 case 3:
    
-     PORTD=0b00000000;                                  //byt bitar
+     PORTD=0b00000000;                                  //
    break;
    
 case 4:
   OCR1A = 1000;			//RB
-      PORTD=0b10000000;                                 //byt bitar
+      PORTD=0b10000000;                                 //byt motor
    break;
    
    case 5:
-   OCR1A = 1000;			//RF		
-   PORTD=0b01000000;                                    //byt bitar
+   OCR1A = rf;			//RF		
+   PORTD=0b01000000;                                    //byt motor
    break;
    
    
