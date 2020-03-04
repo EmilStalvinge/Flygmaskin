@@ -92,29 +92,32 @@ void DLPFwrite(void)
 	}
 }
 
+//wake up MPU
 void initI2C(void)
 {
 	i2c_init();
-	// powe management 0x6b
+	// power management 0x6B, wake up from sleep
 	
 	i2c_start_wait(MPU6050_ADDR+I2C_WRITE);
 	_delay_us(20);
-	i2c_write(0x6b);
+	i2c_write(0x6B);
 	_delay_us(20);
 	i2c_write(0x00);
 	_delay_us(20);
 	i2c_stop();
 }
 
+//counting time for Derivative part of PID
 void initTime(void)
 {
 	TCCR0B=(1 << CS00 );
 	TIMSK0=(1 << TOIE0);
 }
 
+// init 16bit timer for motor pwm
 void initMotor(void)
 {
-	DDRD = 0b11110000;
+	DDRD = 0b11110000;              //PORT D used as AND gates to multiplex pwm to all motors
 	DDRB |= (1 << PB1)|(1 << PB0);
 	
 	
@@ -127,9 +130,9 @@ void initMotor(void)
 	
 	TIMSK1 = (1 << OCIE1B);
 	
-	 ICR1 = 8000000UL/4000; // frequency F_cpu/wanted freq = ICR1
-	 OCR1A = 1000;  // set duty cycle, 1000-2000, 0-100%
-	 OCR1B= 8000000UL/4000 -100;
+	 ICR1 = 8000000UL/4000;      // frequency F_cpu/wanted freq = ICR1
+	 OCR1A = 1000;               // set duty cycle, 1000-2000, 0-100%
+	 OCR1B= 8000000UL/4000 -100; // Prepare to switch AND gates in interrupt
 }
 
 void initSBUS(void)
@@ -161,13 +164,10 @@ void initLCD(void)
 
 int main()
 {
-	sei();
+	sei();   //Enable interrupts
 	
 	int16_t gx,gy,gz;
 
-	/////////////////PID variabler////////////////////
-	
-	//////////////////////////////////////////////////
 	
 	////////////////INITIALIZATION ///////////////////
 	initSBUS();
@@ -175,20 +175,19 @@ int main()
 	//initLCD();
 	initI2C();
 	DLPFwrite();
-	//initTime();
+	initTime();
 	//////////////////////////////////////////////////
-	
 	
 	////////////////PID konstanter////////////////////
 	
-	int16_t roll_kp  = 4;
-   	int16_t pitch_kp = 4;
-	int16_t yaw_kp   = 4;   
+	int16_t roll_kp  = 1;
+   	int16_t pitch_kp = 1;
+	int16_t yaw_kp   = 1;   
 	int16_t roll_ki  = 0;
    	int16_t pitch_ki = 0;
 	int16_t yaw_ki   = 0;   
-	int16_t roll_kd  = 0;
-   	int16_t pitch_kd = 0;
+	int16_t roll_kd  = 1;
+   	int16_t pitch_kd = 1;
 	
 	//////////////////////////////////////////////////
 	
@@ -196,16 +195,16 @@ int main()
 	{
 		
 		
-		MPUread();
+		MPUread();  //Fetch gyro values from MPU6050
 	
 		//gyro
-		gx  = ( (DS1307_regs[gxh] << 8) | DS1307_regs[gxl] ) / 131.0;
-		gy  = ( (DS1307_regs[gyh] << 8) | DS1307_regs[gyl] ) / 131.0;
-		gz  = ( (DS1307_regs[gzh] << 8) | DS1307_regs[gzl] ) / 131.0;
+		gx  = ( (DS1307_regs[gxh] << 8) | DS1307_regs[gxl] ) / 131;    //x-axis Angle velocity   degrees/s
+		gy  = ( (DS1307_regs[gyh] << 8) | DS1307_regs[gyl] ) / 131;    //y-axis Angle velocity   degrees/s
+		gz  = ( (DS1307_regs[gzh] << 8) | DS1307_regs[gzl] ) / 131;    //z-axis Angle velocity   degrees/s
 		
 		
-		if (Buffer_loaded == 1)
-		{
+		if (Buffer_loaded == 1)   // wait for whole SBUS package
+		{        // 1 channel is 11 bits, save the 11 bit value in a 16 bit memory
 			channels[0]  = (int16_t) ((_payload[1]    |_payload[2] <<8)                     & 0x07FF); // pitch    (högre värde uppåt)      mitten 1001
 			channels[1]  = (int16_t) ((_payload[2]>>3 |_payload[3] <<5)                     & 0x07FF); // roll     (högre värde till höger) 170-1815
 			channels[2]  = (int16_t) ((_payload[3]>>6 |_payload[4] <<2 |_payload[5]<<10)  	& 0x07FF); // throttle (högre värde uppåt)      mitt 986
@@ -215,7 +214,7 @@ int main()
 			{
 				failsafe = 1;
 			}
-			Buffer_loaded = 0;
+			Buffer_loaded = 0;  
 		}
 		
 		
@@ -224,35 +223,38 @@ int main()
 		/*///////////////////////////P I D  L O O P///////////////////////////////////*/
       
 	  
-	  roll_anglevelocity  = gy*-1;  //detta bör vara gx eller gy 
-	  pitch_anglevelocity = gx;  //detta bör vara gx eller gy
-	  yaw_anglevelocity   = gz;
-	 
-      input_THROTTLE              = ((2* channels[2])/3 ) +866;
-	  yaw_desired_anglevelocity   = ((3* channels[3])/25) -114;
-      roll_desired_anglevelocity  = ((3* channels[1])/25) -120;
-      pitch_desired_anglevelocity = ((3* channels[0])/25) -114; 
+	  roll_anglevelocity  = gy*-1;   // measured angle velocity y-axis
+	  pitch_anglevelocity = gx;      // measured angle velocity x-axis
+	  yaw_anglevelocity   = gz;      // measured angle velocity z-axis
 	  
-	  
-
-	        
-      roll_error  = roll_desired_anglevelocity - roll_anglevelocity;
-      pitch_error = pitch_desired_anglevelocity - pitch_anglevelocity;    
-      yaw_error   = yaw_desired_anglevelocity - yaw_anglevelocity;   
 	
-      roll_pid_p  = roll_kp  * roll_error;
-      pitch_pid_p = pitch_kp * pitch_error;
-	  yaw_pid_p   = yaw_kp   * yaw_error;
+		 
+      input_THROTTLE              = ((2* channels[2])/3 ) +866;  // mapping 0-2000 from joystick to OCR1B value of 1000-2000
+	  yaw_desired_anglevelocity   = ((3* channels[3])/25) -114;  // mapping 0-2000 from joystick to a desired yaw angle velocity of -90 to 90
+      roll_desired_anglevelocity  = ((3* channels[1])/25) -120;  // mapping 0-2000 from joystick to a desired roll angle velocity of -90 to 90
+      pitch_desired_anglevelocity = ((3* channels[0])/25) -114;  // mapping 0-2000 from joystick to a desired pitch angle velocity of -90 to 90
+	  
+	  //if ((1020>channels[0]) | (980<channels[0])){pitch_desired_anglevelocity=0;}
+	  //if ((1020>channels[1]) | (980<channels[1])){roll_desired_anglevelocity =0;}
+      //if ((1020>channels[2]) | (980<channels[2])){yaw_desired_anglevelocity  =0;}
+	        
+      roll_error  = roll_desired_anglevelocity  - roll_anglevelocity;
+      pitch_error = pitch_desired_anglevelocity - pitch_anglevelocity;    
+      yaw_error   = yaw_desired_anglevelocity   - yaw_anglevelocity;   
+	
+      roll_pid_p  = 0.3  * roll_error;
+      pitch_pid_p = 0.3 * pitch_error;
+	  yaw_pid_p   = 0.3   * yaw_error;
     
       //if((-3 < roll_error)  & (roll_error  < 3)) {roll_pid_i  = roll_pid_i  + (roll_ki  * roll_error );}
       //if((-3 < pitch_error) & (pitch_error < 3)) {pitch_pid_i = pitch_pid_i + (pitch_ki * pitch_error);}
 	  //if((-3 < yaw_error)   & (yaw_error   < 3)) {yaw_pid_i   = yaw_pid_i   + (yaw_ki   * yaw_error  );}
 			  
-      //elapsedTime = (timer*32) / 1000000;  //elapsed time in seconds
-	  //timer = 0;
+      elapsedTime = (timer*32) / 1000000;  //elapsed time in seconds
+	  timer = 0;
 	  
-      //roll_pid_d  = roll_kd  *((roll_error  - roll_previous_error )/elapsedTime);		
-      //pitch_pid_d = pitch_kd *((pitch_error - pitch_previous_error)/elapsedTime);
+      roll_pid_d  = 0.4  *((roll_error  - roll_previous_error )/elapsedTime);		
+      pitch_pid_d = 0.4 *((pitch_error - pitch_previous_error)/elapsedTime);
     
       roll_PID  = roll_pid_p  + roll_pid_i  + roll_pid_d;
       pitch_PID = pitch_pid_p + pitch_pid_i + pitch_pid_d;
@@ -262,24 +264,28 @@ int main()
       //if(roll_PID  >  400) {roll_PID  =  400;}
       //if(pitch_PID < -400) {pitch_PID = -400;}
       //if(pitch_PID >  400) {pitch_PID =  400;}
-    
+      //if(yaw_PID   < -400) {yaw_PID   = -400;}
+      //if(yaw_PID   >  400) {yaw_PID   =  400;}
 	
+	// Setting motor values
       pwm_R_F  = input_THROTTLE - roll_PID - pitch_PID + yaw_PID;
       pwm_R_B  = input_THROTTLE - roll_PID + pitch_PID - yaw_PID;
       pwm_L_B  = input_THROTTLE + roll_PID + pitch_PID + yaw_PID;
       pwm_L_F  = input_THROTTLE + roll_PID - pitch_PID - yaw_PID;
 	
+	//limiting max motor input
 	if(pwm_R_F > 2000) {pwm_R_F = 2000;}
 	if(pwm_R_B > 2000) {pwm_R_B = 2000;}
 	if(pwm_L_F > 2000) {pwm_L_F = 2000;}
 	if(pwm_L_B > 2000) {pwm_L_B = 2000;}
-		
+    
+	//Setting lowest motor input to 1000 AND checking if "Enable" switch is on
 	if((pwm_R_F < 1000) | (channels[4]<1500)) {pwm_R_F = 990;}
 	if((pwm_R_B < 1000) | (channels[4]<1500)) {pwm_R_B = 990;}
 	if((pwm_L_F < 1000) | (channels[4]<1500)) {pwm_L_F = 900;}
 	if((pwm_L_B < 1000) | (channels[4]<1500)) {pwm_L_B = 900;}
 	
-	
+	// saving error for derivative part of PID//
 	  roll_previous_error  = roll_error;
 	  pitch_previous_error = pitch_error;
    //////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -330,10 +336,12 @@ case 4:
 Motorcount++;
 }
 
+
 ISR(TIMER0_OVF_vect)
 {
 	timer++;
 }
+
 
 ISR(USART_RX_vect)
 {
