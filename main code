@@ -31,19 +31,24 @@ int16_t channels[5];
 int16_t Buffer_loaded = 0;
 int16_t failsafe = 0;
 int16_t Motorcount = 1;
-
 int16_t timer = 10;
-int16_t timerPrev;
 
 int16_t pwm_R_F, pwm_R_B, pwm_L_F, pwm_L_B;
-int16_t k_throttle = 2/3;
-int16_t m_throttle = 1300 * (2/3);
-int16_t k_pitch = 3/25;
-int16_t m_pitch = -114;
+
+/////////////////PID variabler////////////////////
 int16_t input_THROTTLE =0;
-int16_t rf =0;
-
-
+int16_t yaw_desired_anglevelocity=0;
+int16_t roll_desired_anglevelocity=0;
+int16_t pitch_desired_anglevelocity=0;
+int16_t roll_error =0;
+int16_t pitch_error=0, roll_pid_p=0, pitch_pid_p=0, roll_pid_d=0, pitch_pid_d=0,roll_PID=0,pitch_PID=0, yaw_error=0, yaw_pid_p=0, yaw_PID=0, yaw_pid_i=0;
+int16_t roll_anglevelocity=0, pitch_anglevelocity=0,yaw_anglevelocity=0, pwm_R_F=0, pwm_R_B=0, pwm_L_F=0, pwm_L_B=0;
+int16_t roll_pid_i = 0;
+int16_t pitch_pid_i = 0;
+int16_t roll_previous_error = 0;
+int16_t pitch_previous_error = 0;
+int16_t elapsedTime=0;
+//////////////////////////////////////////////////
 
 
 // memory copy of the MPU6050 registers
@@ -159,16 +164,9 @@ int main()
 	sei();
 	
 	int16_t gx,gy,gz;
-	//char buffer[20];   //Only for LCD Screen
-	
+
 	/////////////////PID variabler////////////////////
-	int16_t roll_error, pitch_error, roll_pid_p, pitch_pid_p, roll_pid_d, pitch_pid_d,roll_PID,pitch_PID, yaw_error, yaw_pid_p, yaw_PID, yaw_pid_i;
-	int16_t roll_desired_anglevelocity, pitch_desired_anglevelocity,yaw_desired_anglevelocity, roll_anglevelocity, pitch_anglevelocity,yaw_anglevelocity, pwm_R_F, pwm_R_B, pwm_L_F, pwm_L_B;
-	int16_t roll_pid_i = 0;
-	int16_t pitch_pid_i = 0;
-	int16_t roll_previous_error = 0;
-	int16_t pitch_previous_error = 0;
-	int16_t elapsedTime;
+	
 	//////////////////////////////////////////////////
 	
 	////////////////INITIALIZATION ///////////////////
@@ -183,9 +181,9 @@ int main()
 	
 	////////////////PID konstanter////////////////////
 	
-	int16_t roll_kp  = 1;
-   	int16_t pitch_kp = 1;
-	int16_t yaw_kp   = 1;   
+	int16_t roll_kp  = 4;
+   	int16_t pitch_kp = 4;
+	int16_t yaw_kp   = 4;   
 	int16_t roll_ki  = 0;
    	int16_t pitch_ki = 0;
 	int16_t yaw_ki   = 0;   
@@ -201,16 +199,16 @@ int main()
 		MPUread();
 	
 		//gyro
-		gx  = ( (DS1307_regs[gxh] << 8) | DS1307_regs[gxl] ) / 131;
-		gy  = ( (DS1307_regs[gyh] << 8) | DS1307_regs[gyl] ) / 131;
-		gz  = ( (DS1307_regs[gzh] << 8) | DS1307_regs[gzl] ) / 131;
+		gx  = ( (DS1307_regs[gxh] << 8) | DS1307_regs[gxl] ) / 131.0;
+		gy  = ( (DS1307_regs[gyh] << 8) | DS1307_regs[gyl] ) / 131.0;
+		gz  = ( (DS1307_regs[gzh] << 8) | DS1307_regs[gzl] ) / 131.0;
 		
 		
 		if (Buffer_loaded == 1)
 		{
 			channels[0]  = (int16_t) ((_payload[1]    |_payload[2] <<8)                     & 0x07FF); // pitch    (högre värde uppåt)      mitten 1001
 			channels[1]  = (int16_t) ((_payload[2]>>3 |_payload[3] <<5)                     & 0x07FF); // roll     (högre värde till höger) 170-1815
-			channels[2]  = (int16_t) ((_payload[3]>>6 |_payload[4] <<2 |_payload[5]<<10)  	 & 0x07FF); // throttle (högre värde uppåt)      mitt 986
+			channels[2]  = (int16_t) ((_payload[3]>>6 |_payload[4] <<2 |_payload[5]<<10)  	& 0x07FF); // throttle (högre värde uppåt)      mitt 986
 			channels[3]  = (int16_t) ((_payload[5]>>1 |_payload[6] <<7)                     & 0x07FF); // yaw      (högre värde höger)      mitt 989
 			channels[4]  = (int16_t) ((_payload[6]>>4 |_payload[7] <<4)                     & 0x07FF); // switch   (högre uppåt)
 			if ( (_payload[24] & 0x10) == 0x10)
@@ -221,51 +219,49 @@ int main()
 		}
 		
 		
-	  input_THROTTLE =channels[2];
-	  rf = input_THROTTLE;
 	  
-		
+	  
 		/*///////////////////////////P I D  L O O P///////////////////////////////////*/
       
 	  
-	  roll_anglevelocity  = gx;  //detta bör vara gx eller gy 
-	  pitch_anglevelocity = gy;  //detta bör vara gx eller gy
+	  roll_anglevelocity  = gy*-1;  //detta bör vara gx eller gy 
+	  pitch_anglevelocity = gx;  //detta bör vara gx eller gy
 	  yaw_anglevelocity   = gz;
 	 
-      input_THROTTLE              = k_throttle * channels[2] + m_throttle;
-	  yaw_desired_anglevelocity   = k_pitch    * channels[3] + m_pitch;
-      roll_desired_anglevelocity  = k_pitch    * channels[1] + m_pitch; 
-      pitch_desired_anglevelocity = k_pitch    * channels[0] + m_pitch; 
+      input_THROTTLE              = ((2* channels[2])/3 ) +866;
+	  yaw_desired_anglevelocity   = ((3* channels[3])/25) -114;
+      roll_desired_anglevelocity  = ((3* channels[1])/25) -120;
+      pitch_desired_anglevelocity = ((3* channels[0])/25) -114; 
 	  
 	  
 
 	        
-      roll_error  = roll_anglevelocity  - roll_desired_anglevelocity;
-      pitch_error = pitch_anglevelocity - pitch_desired_anglevelocity;    
-      yaw_error   = yaw_anglevelocity   - yaw_desired_anglevelocity;   
+      roll_error  = roll_desired_anglevelocity - roll_anglevelocity;
+      pitch_error = pitch_desired_anglevelocity - pitch_anglevelocity;    
+      yaw_error   = yaw_desired_anglevelocity - yaw_anglevelocity;   
 	
       roll_pid_p  = roll_kp  * roll_error;
       pitch_pid_p = pitch_kp * pitch_error;
 	  yaw_pid_p   = yaw_kp   * yaw_error;
     
-      if((-3 < roll_error)  & (roll_error  < 3)) {roll_pid_i  = roll_pid_i  + (roll_ki  * roll_error );}
-      if((-3 < pitch_error) & (pitch_error < 3)) {pitch_pid_i = pitch_pid_i + (pitch_ki * pitch_error);}
-	  if((-3 < yaw_error)   & (yaw_error   < 3)) {yaw_pid_i   = yaw_pid_i   + (yaw_ki   * yaw_error  );}
+      //if((-3 < roll_error)  & (roll_error  < 3)) {roll_pid_i  = roll_pid_i  + (roll_ki  * roll_error );}
+      //if((-3 < pitch_error) & (pitch_error < 3)) {pitch_pid_i = pitch_pid_i + (pitch_ki * pitch_error);}
+	  //if((-3 < yaw_error)   & (yaw_error   < 3)) {yaw_pid_i   = yaw_pid_i   + (yaw_ki   * yaw_error  );}
 			  
-      elapsedTime = (timer*32) / 1000000;  //elapsed time in seconds
-	  timer = 0;
+      //elapsedTime = (timer*32) / 1000000;  //elapsed time in seconds
+	  //timer = 0;
 	  
-      roll_pid_d  = roll_kd  *((roll_error  - roll_previous_error )/elapsedTime);		
-      pitch_pid_d = pitch_kd *((pitch_error - pitch_previous_error)/elapsedTime);
+      //roll_pid_d  = roll_kd  *((roll_error  - roll_previous_error )/elapsedTime);		
+      //pitch_pid_d = pitch_kd *((pitch_error - pitch_previous_error)/elapsedTime);
     
       roll_PID  = roll_pid_p  + roll_pid_i  + roll_pid_d;
       pitch_PID = pitch_pid_p + pitch_pid_i + pitch_pid_d;
 	  yaw_PID   = yaw_pid_p   + yaw_pid_i;
     
-      if(roll_PID  < -400) {roll_PID  = -400;}
-      if(roll_PID  >  400) {roll_PID  =  400;}
-      if(pitch_PID < -400) {pitch_PID = -400;}
-      if(pitch_PID >  400) {pitch_PID =  400;}
+      //if(roll_PID  < -400) {roll_PID  = -400;}
+      //if(roll_PID  >  400) {roll_PID  =  400;}
+      //if(pitch_PID < -400) {pitch_PID = -400;}
+      //if(pitch_PID >  400) {pitch_PID =  400;}
     
 	
       pwm_R_F  = input_THROTTLE - roll_PID - pitch_PID + yaw_PID;
@@ -278,10 +274,10 @@ int main()
 	if(pwm_L_F > 2000) {pwm_L_F = 2000;}
 	if(pwm_L_B > 2000) {pwm_L_B = 2000;}
 		
-	if(pwm_R_F < 1000) {pwm_R_F = 1000;}
-	if(pwm_R_B < 1000) {pwm_R_B = 1000;}
-	if(pwm_L_F < 1000) {pwm_L_F = 1000;}
-	if(pwm_L_B < 1000) {pwm_L_B = 1000;}
+	if((pwm_R_F < 1000) | (channels[4]<1500)) {pwm_R_F = 990;}
+	if((pwm_R_B < 1000) | (channels[4]<1500)) {pwm_R_B = 990;}
+	if((pwm_L_F < 1000) | (channels[4]<1500)) {pwm_L_F = 900;}
+	if((pwm_L_B < 1000) | (channels[4]<1500)) {pwm_L_B = 900;}
 	
 	
 	  roll_previous_error  = roll_error;
@@ -298,12 +294,12 @@ ISR(TIMER1_COMPB_vect)
 switch (Motorcount)
 {
 case 1: 
-OCR1A = 1000;			//LF
+OCR1A = pwm_L_F;			//LF
       PORTD=0b00010000;                                //byt motor
 	break;
 	
 case 2:
- OCR1A = 1000;			//LB
+ OCR1A = pwm_L_B;			//LB
       PORTD=0b00100000;                                 //byt motor
    break;
    
@@ -313,12 +309,12 @@ case 3:
    break;
    
 case 4:
-  OCR1A = 1000;			//RB
+  OCR1A = pwm_R_B;			//RB
       PORTD=0b10000000;                                 //byt motor
    break;
    
    case 5:
-   OCR1A = rf;			//RF		
+   OCR1A = pwm_R_F;			//RF		
    PORTD=0b01000000;                                    //byt motor
    break;
    
