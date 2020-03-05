@@ -33,23 +33,37 @@ int16_t failsafe = 0;
 int16_t Motorcount = 1;
 int16_t timer = 10;
 
-int16_t pwm_R_F, pwm_R_B, pwm_L_F, pwm_L_B;
 
 /////////////////PID variabler////////////////////
-int16_t input_THROTTLE =0;
-int16_t yaw_desired_anglevelocity=0;
-int16_t roll_desired_anglevelocity=0;
-int16_t pitch_desired_anglevelocity=0;
-int16_t roll_error =0;
-int16_t pitch_error=0, roll_pid_p=0, pitch_pid_p=0, roll_pid_d=0, pitch_pid_d=0,roll_PID=0,pitch_PID=0, yaw_error=0, yaw_pid_p=0, yaw_PID=0, yaw_pid_i=0;
-int16_t roll_anglevelocity=0, pitch_anglevelocity=0,yaw_anglevelocity=0, pwm_R_F=0, pwm_R_B=0, pwm_L_F=0, pwm_L_B=0;
-int16_t roll_pid_i = 0;
-int16_t pitch_pid_i = 0;
-int16_t roll_previous_error = 0;
-int16_t pitch_previous_error = 0;
+float input_THROTTLE =0;
+float yaw_desired_anglevelocity=0;
+float roll_desired_anglevelocity=0;
+float pitch_desired_anglevelocity=0;
+float roll_error =0;
+float pitch_error=0, roll_pid_p=0, pitch_pid_p=0, roll_pid_d=0, pitch_pid_d=0,roll_PID=0,pitch_PID=0, yaw_error=0, yaw_pid_p=0, yaw_PID=0, yaw_pid_i=0;
+float roll_anglevelocity=0, pitch_anglevelocity=0,yaw_anglevelocity=0;
+float roll_pid_i = 0;
+float pitch_pid_i = 0;
+int16_t pwm_R_F=0, pwm_R_B=0, pwm_L_F=0, pwm_L_B=0;
+float roll_previous_error = 0;
+float pitch_previous_error = 0;
 int16_t elapsedTime=0;
 //////////////////////////////////////////////////
 
+float gx,gy,gz;
+
+	////////////////PID konstanter////////////////////
+	
+	float roll_kp  = 1;
+	float pitch_kp = 1;
+	float yaw_kp   = 1;
+	float roll_ki  = 0;
+	float pitch_ki = 0;
+	float yaw_ki   = 0;
+	float roll_kd  = 1;
+	float pitch_kd = 1;
+	
+	//////////////////////////////////////////////////
 
 // memory copy of the MPU6050 registers
 int16_t DS1307_regs[DSREGS];
@@ -166,9 +180,6 @@ int main()
 {
 	sei();   //Enable interrupts
 	
-	int16_t gx,gy,gz;
-
-	
 	////////////////INITIALIZATION ///////////////////
 	initSBUS();
 	initMotor();
@@ -176,19 +187,6 @@ int main()
 	initI2C();
 	DLPFwrite();
 	initTime();
-	//////////////////////////////////////////////////
-	
-	////////////////PID konstanter////////////////////
-	
-	int16_t roll_kp  = 1;
-   	int16_t pitch_kp = 1;
-	int16_t yaw_kp   = 1;   
-	int16_t roll_ki  = 0;
-   	int16_t pitch_ki = 0;
-	int16_t yaw_ki   = 0;   
-	int16_t roll_kd  = 1;
-   	int16_t pitch_kd = 1;
-	
 	//////////////////////////////////////////////////
 	
 	while(1)
@@ -225,7 +223,7 @@ int main()
 	  
 	  roll_anglevelocity  = gy*-1;   // measured angle velocity y-axis
 	  pitch_anglevelocity = gx;      // measured angle velocity x-axis
-	  yaw_anglevelocity   = gz;      // measured angle velocity z-axis
+	  yaw_anglevelocity   = gz*-1;      // measured angle velocity z-axis
 	  
 	
 		 
@@ -242,20 +240,20 @@ int main()
       pitch_error = pitch_desired_anglevelocity - pitch_anglevelocity;    
       yaw_error   = yaw_desired_anglevelocity   - yaw_anglevelocity;   
 	
-      roll_pid_p  = 0.3  * roll_error;
-      pitch_pid_p = 0.3 * pitch_error;
-	  yaw_pid_p   = 0.3   * yaw_error;
+      roll_pid_p  = roll_kp  * roll_error;
+      pitch_pid_p = pitch_kp * pitch_error;
+	  yaw_pid_p   = yaw_kp   * yaw_error;
     
       //if((-3 < roll_error)  & (roll_error  < 3)) {roll_pid_i  = roll_pid_i  + (roll_ki  * roll_error );}
       //if((-3 < pitch_error) & (pitch_error < 3)) {pitch_pid_i = pitch_pid_i + (pitch_ki * pitch_error);}
 	  //if((-3 < yaw_error)   & (yaw_error   < 3)) {yaw_pid_i   = yaw_pid_i   + (yaw_ki   * yaw_error  );}
 			  
-      elapsedTime = (timer*32) / 1000000;  //elapsed time in seconds
-	  timer = 0;
+      
 	  
-      roll_pid_d  = 0.4  *((roll_error  - roll_previous_error )/elapsedTime);		
-      pitch_pid_d = 0.4 *((pitch_error - pitch_previous_error)/elapsedTime);
-    
+      roll_pid_d  = roll_kd  *((roll_error  - roll_previous_error )/ ((timer*32) / 1000000));		
+      pitch_pid_d = pitch_kd *((pitch_error - pitch_previous_error)/ ((timer*32) / 1000000));
+      timer = 0;
+	
       roll_PID  = roll_pid_p  + roll_pid_i  + roll_pid_d;
       pitch_PID = pitch_pid_p + pitch_pid_i + pitch_pid_d;
 	  yaw_PID   = yaw_pid_p   + yaw_pid_i;
