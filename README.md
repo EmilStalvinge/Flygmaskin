@@ -44,7 +44,7 @@ We then configure the inbuilt low pass filter, which we choose to set at 20Hz (s
 the vibrations from the motors to get a more stable reading.
 
 <p align="center">
-<img src="https://https://user-images.githubusercontent.com/50867974/116966685-05b6ff80-acb1-11eb-8d19-f51e82a8703b.png" width="300">
+<img src="https://user-images.githubusercontent.com/50867974/116966685-05b6ff80-acb1-11eb-8d19-f51e82a8703b.png" width="300">
 </p>
 
 The read function is called in the beginning of the main loop. This was an easy way to get new numbers,
